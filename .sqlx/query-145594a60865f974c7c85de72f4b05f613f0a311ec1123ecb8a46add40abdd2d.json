@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select content from pages where slug = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "content",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "145594a60865f974c7c85de72f4b05f613f0a311ec1123ecb8a46add40abdd2d"
+}
