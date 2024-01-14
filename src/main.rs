@@ -1,17 +1,22 @@
-use axum::extract::{MatchedPath, Query};
-use axum::http::{Request, StatusCode};
-use axum::response::{Html as AHtml, IntoResponse, Response};
-use axum::{routing::get, Extension, Router};
-use maud::{html, Markup, DOCTYPE};
+use axum::{
+    extract::{MatchedPath, Path, Query, State},
+    http::{Request, StatusCode},
+    response::{Html as AHtml, IntoResponse, Response},
+    routing::{get, Router},
+};
+use maud::{html, Markup, PreEscaped};
 use serde::Deserialize;
 use tower::ServiceBuilder;
+use tower_http::services::ServeDir;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tower_http::LatencyUnit;
-// use tower::ServiceBuilder;
-use tower_http::services::ServeDir;
-use tracing::{info_span, Level};
-// use tower_http::trace::TraceLayer;
+use tracing::{info_span, Level, Span};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+mod copy;
+mod markup;
+use dotenv::dotenv;
+use markup::{get_gallery, page};
+use sqlx::postgres::{PgPool, PgPoolOptions};
 
 const TITLE: &'static str = "Sample site";
 
@@ -20,47 +25,6 @@ struct HtmlRes(Markup);
 impl IntoResponse for HtmlRes {
     fn into_response(self) -> Response {
         (StatusCode::OK, AHtml(self.0.into_string())).into_response()
-    }
-}
-
-fn page(content: Markup) -> Markup {
-    html! {
-        (DOCTYPE)
-        html {
-            head {
-                title { "Sample site" }
-                link rel="stylesheet" href="assets/css/main.css";
-            }
-            body {
-                (content)
-            }
-            script
-            src="https://unpkg.com/htmx.org@1.9.6"
-            integrity="sha384-FhXw7b6AlE/jyjlZH5iHa/tTe9EpJ1Y55RjcgPbjeWMskSxZt1v9qkxLJWNJaGni"
-            crossorigin="anonymous" {}
-        }
-    }
-}
-
-fn get_gallery(index: usize) -> Markup {
-    html! {
-        section #gallery  {
-            ul {
-                li {
-                    img class=(if index == 0 {"shown"} else {""}) src="https://picsum.photos/seed/one/1500/1000" alt=(TITLE);
-                }
-                li {
-                    img class=(if index == 1 {"shown"} else {""}) src="https://picsum.photos/seed/two/1500/1000" alt=(TITLE);
-                }
-                li {
-                    img class=(if index == 2 {"shown"} else {""}) src="https://picsum.photos/seed/three/1500/1000" alt=(TITLE);
-                }
-            }
-            .buttons {
-                button hx-get="/image" hx-vals=(format!("js:{{index:{}}}", if index > 1 { index - 1} else {0}))   hx-target="#gallery" hx-swap="outerHTML" {"⟨"}
-                button hx-get="/image" hx-vals=(format!("js:{{index:{}}}", if index < 2 { index + 1 } else {2} )) hx-target="#gallery" hx-swap="outerHTML" {"⟩"}
-            }
-        }
     }
 }
 
@@ -76,6 +40,46 @@ async fn home() -> HtmlRes {
     }}))
 }
 
+#[derive(Debug)]
+struct Page {
+    slug: String,
+    title: String,
+}
+
+struct PageContent {
+    content: String,
+}
+
+async fn get_page(Path(path): Path<String>, State(db): State<PgPool>) -> HtmlRes {
+    let PageContent { content } = sqlx::query_as!(
+        PageContent,
+        "select content from pages where slug = $1",
+        path
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    HtmlRes(html! {
+        div{(PreEscaped(markdown::to_html(&content)))}
+    })
+}
+
+async fn get_pages(State(db): State<PgPool>) -> HtmlRes {
+    let pages = sqlx::query_as!(Page, "select slug, title from pages")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    HtmlRes(html! {
+        ul {
+            @for Page{slug, title} in pages {
+                li {
+                    a href=(format!("/{}", slug)) { (title) }
+                }
+            }
+        }
+    })
+}
+
 #[derive(Deserialize)]
 struct ImageQuery {
     index: Option<usize>,
@@ -85,48 +89,56 @@ async fn gallery(Query(ImageQuery { index }): Query<ImageQuery>) -> HtmlRes {
     HtmlRes(get_gallery(index.unwrap_or(0)))
 }
 
-#[derive(Clone)]
-struct State {}
+fn span<T>(request: &Request<T>) -> Span {
+    let matched_path = request
+        .extensions()
+        .get::<MatchedPath>()
+        .map(MatchedPath::as_str);
+    info_span!(
+        "REQ",
+        " {:?} {:?} ",
+        request.method(),
+        matched_path.unwrap_or("ERR"),
+    )
+}
 
 #[tokio::main]
 async fn main() {
+    dotenv().ok();
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&std::env::var("DATABASE_URL").expect("DB env var not set"))
+        .await
+        .expect("Can't connect to DB");
+
     let router = Router::new()
         .route("/", get(home))
+        .route("/pages", get(get_pages))
+        .route("/page/:id", get(get_page))
         .route("/image", get(gallery))
         .nest_service("/assets", ServeDir::new("assets"))
         .layer(
-            ServiceBuilder::new()
-                .layer(
-                    TraceLayer::new_for_http()
-                        .make_span_with(|request: &Request<_>| {
-                            // Log the matched route's path (with placeholders not filled in).
-                            // Use request.uri() or OriginalUri if you want the real path.
-                            let matched_path = request
-                                .extensions()
-                                .get::<MatchedPath>()
-                                .map(MatchedPath::as_str);
-
-                            info_span!(
-                                "http_request",
-                                method = ?request.method(),
-                                matched_path,
-                                some_other_field = tracing::field::Empty,
-                            )
-                        })
-                        .on_request(DefaultOnRequest::new().level(Level::INFO))
-                        .on_response(
-                            DefaultOnResponse::new()
-                                .level(Level::INFO)
-                                .latency_unit(LatencyUnit::Micros),
-                        ),
-                )
-                .layer(Extension(State {})),
-        );
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
+            ServiceBuilder::new().layer(
+                TraceLayer::new_for_http()
+                    .make_span_with(span)
+                    .on_request(DefaultOnRequest::new().level(Level::INFO))
+                    .on_response(
+                        DefaultOnResponse::new()
+                            .level(Level::INFO)
+                            .latency_unit(LatencyUnit::Micros),
+                    ),
+            ),
+        )
+        .with_state(pool);
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080")
+        .await
+        .expect("Can't bind to TCP");
     tracing::debug!("listening on {}", listener.local_addr().unwrap());
-    axum::serve(listener, router).await.unwrap();
+    axum::serve(listener, router)
+        .await
+        .expect("Can't start server");
 }
