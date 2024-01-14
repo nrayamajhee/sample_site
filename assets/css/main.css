@@ -22,12 +22,16 @@ body {
   background: #eee;
 }
 main {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: var(--pad);
+  padding-top: var(--pad);
 }
 #gallery {
   position: relative;
+}
+#gallery ul {
+  width: 100%;
+}
+#gallery ul li {
+  display: block;
 }
 h1,
 h2,
@@ -39,12 +43,16 @@ p {
   font-size: 1rem;
   margin: 0;
 }
-ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+a {
+  text-decoration: none;
 }
-h1 {
+a: hover {
+  text-decoration: underline;
+}
+.title:hover {
+  text-decoration: none;
+}
+.title > h1 {
   background: rgba(0, 0, 0, 0.6) url(https://picsum.photos/3000/1000) no-repeat;
   background-position: center;
   background-blend-mode: darken;
@@ -84,15 +92,47 @@ dt {
 dd {
   margin-left: var(--pad);
 }
-ul li {
-  width: 100%;
-}
 img {
   max-width: 100%;
+}
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+nav ul {
+  display: flex;
+  flex-direction: row;
+  gap: var(--pad);
+  align-items: start;
 }
 ul img {
   display: none;
 }
 ul img.shown {
   display: block;
+}
+.buttons {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  padding: 0 var(--pad);
+  display: flex;
+  justify-content: space-between;
+}
+.buttons button {
+  border: none;
+  padding: 5px 12px;
+  color: white;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(5px);
+  box-shadow: 0 4px 4px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+}
+.wrapper {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: var(--pad);
 }

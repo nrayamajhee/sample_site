@@ -15,10 +15,8 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod copy;
 mod markup;
 use dotenv::dotenv;
-use markup::{get_gallery, page};
+use markup::{build_gallery, page};
 use sqlx::postgres::{PgPool, PgPoolOptions};
-
-const TITLE: &'static str = "Sample site";
 
 struct HtmlRes(Markup);
 
@@ -28,16 +26,19 @@ impl IntoResponse for HtmlRes {
     }
 }
 
-async fn home() -> HtmlRes {
-    HtmlRes(page(html! {
-    h1 { (TITLE) }
-    main {
-        article {
-            h2 { "Section 1" }
-            p { "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesent a fermentum nisi, at ultricies orci. Maecenas maximus tincidunt velit, non lacinia sem porta ut. Integer ullamcorper neque quam, posuere efficitur purus rhoncus eu. Aliquam venenatis dui quis tempus egestas. Nulla malesuada ex velit. Phasellus ultrices aliquam accumsan. Praesent magna sem, dapibus sit amet luctus quis, ultricies in nisi. Aenean eu erat rhoncus, tincidunt mi eu, eleifend erat. Nam finibus congue iaculis. Morbi vel rutrum orci. Fusce mollis lectus non pretium interdum." }
-        }
-        (get_gallery(0))
-    }}))
+async fn get_home(State(db): State<PgPool>) -> HtmlRes {
+    let nav = build_nav(&db).await;
+    HtmlRes(page(
+        nav,
+        html! {
+        main {
+            article {
+                h2 { "Section 1" }
+                p { "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesent a fermentum nisi, at ultricies orci. Maecenas maximus tincidunt velit, non lacinia sem porta ut. Integer ullamcorper neque quam, posuere efficitur purus rhoncus eu. Aliquam venenatis dui quis tempus egestas. Nulla malesuada ex velit. Phasellus ultrices aliquam accumsan. Praesent magna sem, dapibus sit amet luctus quis, ultricies in nisi. Aenean eu erat rhoncus, tincidunt mi eu, eleifend erat. Nam finibus congue iaculis. Morbi vel rutrum orci. Fusce mollis lectus non pretium interdum." }
+            }
+            (build_gallery(0))
+        }},
+    ))
 }
 
 #[derive(Debug)]
@@ -50,34 +51,43 @@ struct PageContent {
     content: String,
 }
 
-async fn get_page(Path(path): Path<String>, State(db): State<PgPool>) -> HtmlRes {
+async fn build_page(db: &PgPool, slug: &str) -> Markup {
     let PageContent { content } = sqlx::query_as!(
         PageContent,
         "select content from pages where slug = $1",
-        path
+        slug
     )
-    .fetch_one(&db)
+    .fetch_one(db)
     .await
     .unwrap();
-    HtmlRes(html! {
+    html! {
         div{(PreEscaped(markdown::to_html(&content)))}
-    })
+    }
 }
 
-async fn get_pages(State(db): State<PgPool>) -> HtmlRes {
+async fn get_page(Path(path): Path<String>, State(db): State<PgPool>) -> HtmlRes {
+    let page = page(build_nav(&db).await, build_page(&db, &path).await);
+    HtmlRes(page)
+}
+
+async fn build_nav(db: &PgPool) -> Markup {
     let pages = sqlx::query_as!(Page, "select slug, title from pages")
-        .fetch_all(&db)
+        .fetch_all(db)
         .await
         .unwrap();
-    HtmlRes(html! {
-        ul {
-            @for Page{slug, title} in pages {
-                li {
-                    a href=(format!("/{}", slug)) { (title) }
+    html! {
+        nav {
+            ul
+            class="flex flex-row gap-4"
+            {
+                @for Page{slug, title} in pages {
+                    li {
+                        a href=(format!("/page/{}", slug)) { (title) }
+                    }
                 }
             }
         }
-    })
+    }
 }
 
 #[derive(Deserialize)]
@@ -86,7 +96,7 @@ struct ImageQuery {
 }
 
 async fn gallery(Query(ImageQuery { index }): Query<ImageQuery>) -> HtmlRes {
-    HtmlRes(get_gallery(index.unwrap_or(0)))
+    HtmlRes(build_gallery(index.unwrap_or(0)))
 }
 
 fn span<T>(request: &Request<T>) -> Span {
@@ -116,8 +126,7 @@ async fn main() {
         .expect("Can't connect to DB");
 
     let router = Router::new()
-        .route("/", get(home))
-        .route("/pages", get(get_pages))
+        .route("/", get(get_home))
         .route("/page/:id", get(get_page))
         .route("/image", get(gallery))
         .nest_service("/assets", ServeDir::new("assets"))
