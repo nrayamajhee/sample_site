@@ -12,11 +12,12 @@ use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tower_http::LatencyUnit;
 use tracing::{info_span, Level, Span};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+mod components;
 mod copy;
-mod markup;
+use components::{custom_page, gallery, page};
+mod builder;
 use clerk_rs::{clerk::Clerk, endpoints::ClerkGetEndpoint, ClerkConfiguration};
 use dotenv::dotenv;
-use markup::{build_gallery, page};
 use sqlx::postgres::{PgPool, PgPoolOptions};
 
 struct HtmlRes(Markup);
@@ -27,8 +28,8 @@ impl IntoResponse for HtmlRes {
     }
 }
 
-async fn get_home(State(db): State<PgPool>) -> HtmlRes {
-    let nav = build_nav(&db).await;
+async fn home_page(State(db): State<PgPool>) -> HtmlRes {
+    let nav = builder::nav(&db).await;
     HtmlRes(page(
         nav,
         html! {
@@ -36,63 +37,31 @@ async fn get_home(State(db): State<PgPool>) -> HtmlRes {
                 h2 { "Section 1" }
                 p { "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesent a fermentum nisi, at ultricies orci. Maecenas maximus tincidunt velit, non lacinia sem porta ut. Integer ullamcorper neque quam, posuere efficitur purus rhoncus eu. Aliquam venenatis dui quis tempus egestas. Nulla malesuada ex velit. Phasellus ultrices aliquam accumsan. Praesent magna sem, dapibus sit amet luctus quis, ultricies in nisi. Aenean eu erat rhoncus, tincidunt mi eu, eleifend erat. Nam finibus congue iaculis. Morbi vel rutrum orci. Fusce mollis lectus non pretium interdum." }
             }
-            (build_gallery(0))
+            (gallery(0))
         },
         &[],
     ))
-}
-
-#[derive(Debug)]
-struct Page {
-    slug: String,
-    title: String,
 }
 
 struct PageContent {
     content: String,
 }
 
-fn markdown(md: &str) -> PreEscaped<String> {
-    PreEscaped(markdown::to_html(&md))
-}
-
-async fn build_page(db: &PgPool, slug: &str) -> Markup {
-    let PageContent { content } = sqlx::query_as!(
-        PageContent,
-        "select content from pages where slug = $1",
-        slug
-    )
-    .fetch_one(db)
-    .await
-    .unwrap();
+fn script(script: &str) -> Markup {
     html! {
-        div{(markdown(&content))}
-    }
-}
-
-async fn get_page(Path(path): Path<String>, State(db): State<PgPool>) -> HtmlRes {
-    let page = page(build_nav(&db).await, build_page(&db, &path).await, &[]);
-    HtmlRes(page)
-}
-
-async fn build_nav(db: &PgPool) -> Markup {
-    let pages = sqlx::query_as!(Page, "select slug, title from pages")
-        .fetch_all(db)
-        .await
-        .unwrap();
-    html! {
-        nav {
-            ul
-            class="flex flex-row gap-4"
-            {
-                @for Page{slug, title} in pages {
-                    li {
-                        a href=(format!("/page/{}", slug)) { (title) }
-                    }
-                }
-            }
+        script {
+            (PreEscaped(script))
         }
     }
+}
+
+async fn single_page(Path(path): Path<String>, State(db): State<PgPool>) -> HtmlRes {
+    let page = page(
+        builder::nav(&db).await,
+        builder::page(&db, &path).await,
+        &[],
+    );
+    HtmlRes(page)
 }
 
 #[derive(Deserialize)]
@@ -100,8 +69,8 @@ struct ImageQuery {
     index: Option<usize>,
 }
 
-async fn gallery(Query(ImageQuery { index }): Query<ImageQuery>) -> HtmlRes {
-    HtmlRes(build_gallery(index.unwrap_or(0)))
+async fn gallery_page(Query(ImageQuery { index }): Query<ImageQuery>) -> HtmlRes {
+    HtmlRes(gallery(index.unwrap_or(0)))
 }
 
 fn span<T>(request: &Request<T>) -> Span {
@@ -130,43 +99,17 @@ async fn sign_up() -> String {
     res.to_string()
 }
 
-async fn login_page() -> HtmlRes {
-    HtmlRes(page(
-        html! {},
+async fn not_found() -> (StatusCode, AHtml<String>) {
+    let page = custom_page(
+        "404",
         html! {
-            #login {
-                form {
-                    button id="login-button" type="button" { "Login" }
-                }
+            .text-center {
+                p.huge { "Page not found" }
+                a href="/" { "Your way home" }
             }
-            script
-            data-clerk-frontend-api=(std::env::var("CLERK_URL").unwrap())
-            data-clerk-publishable-key=(std::env::var("CLERK_KEY").unwrap())
-            src=(format!("https://{api}/npm/@clerk/clerk-js@latest/dist/clerk.browser.js", api=std::env::var("CLERK_URL").unwrap()))
-            {}
-            script {(
-                PreEscaped("
-                    (async () => {
-                        const clerk = window.Clerk
-                        const button = document.getElementById('login-button')
-                        await clerk.load()
-                        if (clerk?.user) {
-                            button.innerText = 'Logout'
-                        }
-                        button.addEventListener('click', () => {
-                            if (clerk?.user) {
-                                clerk.signOut()
-                                button.innerText = 'Login'
-                            } else {
-                                clerk.openSignIn()
-                            }
-                        })
-                    })()
-               ")
-            )}
         },
-        &["/assets/css/login.css"],
-    ))
+    );
+    (StatusCode::NOT_FOUND, AHtml(page.into_string()))
 }
 
 #[tokio::main]
@@ -182,11 +125,11 @@ async fn main() {
         .await
         .expect("Can't connect to DB");
     let router = Router::new()
-        .route("/", get(get_home))
-        .route("/page/:id", get(get_page))
-        .route("/image", get(gallery))
-        .route("/login", get(login_page))
+        .route("/", get(home_page))
+        .route("/page/:id", get(single_page))
+        .route("/image", get(gallery_page))
         .route("/signup", get(sign_up))
+        .fallback(not_found)
         .nest_service("/assets", ServeDir::new("assets"))
         .layer(
             ServiceBuilder::new().layer(

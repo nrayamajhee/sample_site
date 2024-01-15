@@ -14,6 +14,10 @@
   --fg-in: #888;
   --fg-out: #fff;
   --desktop: 960px;
+  --white-1: rgba(255, 255, 255, 0.1);
+  --white-5: #fff;
+  --black-1: rgba(0, 0, 0, 0.1);
+  --black-5: rgba(0, 0, 0, 0.5);
 }
 @media (max-width: 720px) {
   :root {
@@ -55,10 +59,16 @@ p {
   font-size: 1rem;
   margin: 0;
 }
+.huge {
+  font-size: 2rem;
+}
+.text-center {
+  text-align: center;
+}
 .title:hover {
   text-decoration: none;
 }
-.title > h1 {
+#head {
   background: rgba(0, 0, 0, 0.6)
     url(https://picsum.photos/seed/background/3000/1000) no-repeat;
   background-position: center;
@@ -73,13 +83,70 @@ p {
   height: 300px;
   align-items: center;
 }
+#login-button {
+  position: absolute;
+  top: var(--gap);
+  right: var(--gap);
+  z-index: 1;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.5) 50%, rgba(0, 0, 0, 0.7) 50%, rgba(0, 0, 0, 0.7));
+  backdrop-filter: blur(5px);
+  border: 0;
+  border-radius: 50%;
+  width: 4em;
+  height: 4em;
+  padding: 0;
+  transition: all 0.3s ease;
+}
+#login-button.logged {
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.7) 50%, rgba(0, 0, 0, 0.5) 50%, rgba(0, 0, 0, 0.5));
+}
+#login-button::before {
+  z-index: 2;
+  position: absolute;
+  left: 10%;
+  top: 60%;
+  content: "";
+  width: 1.5em;
+  height: 1.5em;
+  border-top: 4px solid var(--fg-in);
+  border-right: 4px solid var(--fg-in);
+  transform: rotate(45deg)
+    translate(-50%, -50%);
+  tansform-origin: center;
+  box-sizing: border-box;
+  transition: all 0.3s ease;
+}
+#login-button.logged::before {
+  left: 60%;
+}
+#login-button.logged::after {
+  left: 50%;
+}
+#login-button::after {
+  z-index: 2;
+  position: absolute;
+  top: 50%;
+  left: 0%;
+  translate: translateY(-50%);
+  content: "";
+  width: 50%;
+  height: 4px;
+  background: var(--fg-in);
+  transition: all 0.3s ease;
+}
+#subhead {
+  font-size: 4em;
+}
 @media (max-width: 960px) {
-  .title > h1 {
+  #head {
     font-size: 3rem;
     height: 150px;
     background-size: cover;
   }
-}
+  #subhead {
+    font-size: 2em;
+  }
+.huge}
 h2 {
   font-size: 2rem;
 }
@@ -143,19 +210,6 @@ ul img.shown {
   max-width: 960px;
   min-height: calc(100vh - 300px);
   margin: 0 auto;
-}
-#login form {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: var(--pad);
-  max-width: 400px;
-  margin: 0 auto;
-}
-#login form > input {
-  grid-column: 1 / 4;
-}
-#login form > button {
-  grid-column: 3 / 4;
 }
 main {
   padding: var(--gap) var(--pad);
