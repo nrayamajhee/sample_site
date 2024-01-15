@@ -14,6 +14,7 @@ use tracing::{info_span, Level, Span};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod copy;
 mod markup;
+use clerk_rs::{clerk::Clerk, endpoints::ClerkGetEndpoint, ClerkConfiguration};
 use dotenv::dotenv;
 use markup::{build_gallery, page};
 use sqlx::postgres::{PgPool, PgPoolOptions};
@@ -31,13 +32,13 @@ async fn get_home(State(db): State<PgPool>) -> HtmlRes {
     HtmlRes(page(
         nav,
         html! {
-        main {
             article {
                 h2 { "Section 1" }
                 p { "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesent a fermentum nisi, at ultricies orci. Maecenas maximus tincidunt velit, non lacinia sem porta ut. Integer ullamcorper neque quam, posuere efficitur purus rhoncus eu. Aliquam venenatis dui quis tempus egestas. Nulla malesuada ex velit. Phasellus ultrices aliquam accumsan. Praesent magna sem, dapibus sit amet luctus quis, ultricies in nisi. Aenean eu erat rhoncus, tincidunt mi eu, eleifend erat. Nam finibus congue iaculis. Morbi vel rutrum orci. Fusce mollis lectus non pretium interdum." }
             }
             (build_gallery(0))
-        }},
+        },
+        &[],
     ))
 }
 
@@ -51,6 +52,10 @@ struct PageContent {
     content: String,
 }
 
+fn markdown(md: &str) -> PreEscaped<String> {
+    PreEscaped(markdown::to_html(&md))
+}
+
 async fn build_page(db: &PgPool, slug: &str) -> Markup {
     let PageContent { content } = sqlx::query_as!(
         PageContent,
@@ -61,12 +66,12 @@ async fn build_page(db: &PgPool, slug: &str) -> Markup {
     .await
     .unwrap();
     html! {
-        div{(PreEscaped(markdown::to_html(&content)))}
+        div{(markdown(&content))}
     }
 }
 
 async fn get_page(Path(path): Path<String>, State(db): State<PgPool>) -> HtmlRes {
-    let page = page(build_nav(&db).await, build_page(&db, &path).await);
+    let page = page(build_nav(&db).await, build_page(&db, &path).await, &[]);
     HtmlRes(page)
 }
 
@@ -112,6 +117,58 @@ fn span<T>(request: &Request<T>) -> Span {
     )
 }
 
+async fn sign_up() -> String {
+    let config = ClerkConfiguration::new(
+        None,
+        None,
+        Some(std::env::var("CLERK_SECRET").unwrap()),
+        None,
+    );
+    let auth = Clerk::new(config);
+    let res = auth.get(ClerkGetEndpoint::GetUserList).await.unwrap();
+    tracing::debug!("res: {:?}", res);
+    res.to_string()
+}
+
+async fn login_page() -> HtmlRes {
+    HtmlRes(page(
+        html! {},
+        html! {
+            #login {
+                form {
+                    button id="login-button" type="button" { "Login" }
+                }
+            }
+            script
+            data-clerk-frontend-api=(std::env::var("CLERK_URL").unwrap())
+            data-clerk-publishable-key=(std::env::var("CLERK_KEY").unwrap())
+            src=(format!("https://{api}/npm/@clerk/clerk-js@latest/dist/clerk.browser.js", api=std::env::var("CLERK_URL").unwrap()))
+            {}
+            script {(
+                PreEscaped("
+                    (async () => {
+                        const clerk = window.Clerk
+                        const button = document.getElementById('login-button')
+                        await clerk.load()
+                        if (clerk?.user) {
+                            button.innerText = 'Logout'
+                        }
+                        button.addEventListener('click', () => {
+                            if (clerk?.user) {
+                                clerk.signOut()
+                                button.innerText = 'Login'
+                            } else {
+                                clerk.openSignIn()
+                            }
+                        })
+                    })()
+               ")
+            )}
+        },
+        &["/assets/css/login.css"],
+    ))
+}
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
@@ -124,11 +181,12 @@ async fn main() {
         .connect(&std::env::var("DATABASE_URL").expect("DB env var not set"))
         .await
         .expect("Can't connect to DB");
-
     let router = Router::new()
         .route("/", get(get_home))
         .route("/page/:id", get(get_page))
         .route("/image", get(gallery))
+        .route("/login", get(login_page))
+        .route("/signup", get(sign_up))
         .nest_service("/assets", ServeDir::new("assets"))
         .layer(
             ServiceBuilder::new().layer(

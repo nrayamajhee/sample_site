@@ -1,12 +1,19 @@
 :root {
-  --pad: 30px;
-  font:
-    18px/1.5 Inter,
-    sans-serif;
-  text-rendering: optimizeLegibility;
-  font-smoothing: always;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --font-size: 18px;
+  --pad-sm: 10px;
+  --pad: 20px;
+  --gap: 40px;
+  --gap-xl: 80px;
+  --pad-in: 10px 20px;
+  --bg: #111;
+  --bg-in: #080808;
+  --bg-out: #1a1a1a;
+  --bg-high: #333;
+  --bg-low: #030303;
+  --fg: #eee;
+  --fg-in: #888;
+  --fg-out: #fff;
+  --desktop: 960px;
 }
 @media (max-width: 720px) {
   :root {
@@ -18,17 +25,22 @@
 }
 body {
   margin: 0;
-  color: #222;
-  background: #eee;
-}
-main {
-  padding-top: var(--pad);
+  color: var(--fg);
+  background: var(--bg);
+  font:
+    var(--font-size)/1.5 Inter,
+    sans-serif;
+  text-rendering: optimizeLegibility;
+  font-smoothing: always;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 #gallery {
   position: relative;
 }
 #gallery ul {
   width: 100%;
+  min-height: calc(100% / 1.5);
 }
 #gallery ul li {
   display: block;
@@ -43,21 +55,15 @@ p {
   font-size: 1rem;
   margin: 0;
 }
-a {
-  text-decoration: none;
-}
-a: hover {
-  text-decoration: underline;
-}
 .title:hover {
   text-decoration: none;
 }
 .title > h1 {
-  background: rgba(0, 0, 0, 0.6) url(https://picsum.photos/3000/1000) no-repeat;
+  background: rgba(0, 0, 0, 0.6)
+    url(https://picsum.photos/seed/background/3000/1000) no-repeat;
   background-position: center;
   background-blend-mode: darken;
   background-size: 100% auto;
-  height: 300px;
   color: white;
   font-size: 4rem;
   text-shadow: 0 4px 4px rgba(0, 0, 0, 0.6);
@@ -67,8 +73,9 @@ a: hover {
   height: 300px;
   align-items: center;
 }
-@media (max-width: 900px) {
-  h1 {
+@media (max-width: 960px) {
+  .title > h1 {
+    font-size: 3rem;
     height: 150px;
     background-size: cover;
   }
@@ -105,6 +112,7 @@ nav ul {
   flex-direction: row;
   gap: var(--pad);
   align-items: start;
+  padding: var(--gap) var(--pad);
 }
 ul img {
   display: none;
@@ -132,7 +140,23 @@ ul img.shown {
   cursor: pointer;
 }
 .wrapper {
-  max-width: 900px;
+  max-width: 960px;
+  min-height: calc(100vh - 300px);
   margin: 0 auto;
-  padding: var(--pad);
+}
+#login form {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--pad);
+  max-width: 400px;
+  margin: 0 auto;
+}
+#login form > input {
+  grid-column: 1 / 4;
+}
+#login form > button {
+  grid-column: 3 / 4;
+}
+main {
+  padding: var(--gap) var(--pad);
 }

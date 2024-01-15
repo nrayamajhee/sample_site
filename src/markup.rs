@@ -1,16 +1,20 @@
 use crate::copy::TITLE;
 use maud::{html, Markup, DOCTYPE};
 
-pub fn page(nav: Markup, content: Markup) -> Markup {
+pub fn page(nav: Markup, main: Markup, style: &[&str]) -> Markup {
     html! {
         (DOCTYPE)
         html {
             head {
                 title { "Sample site" }
                 link rel="stylesheet" href="/assets/css/main.css";
+                link rel="stylesheet" href="/assets/css/input.css";
+                @for s in style {
+                    link rel="stylesheet" href=(s);
+                }
             }
             body {
-                a.title href="/" { 
+                a.title href="/" {
                     h1 { (TITLE) }
                 }
                 .wrapper {
@@ -18,7 +22,7 @@ pub fn page(nav: Markup, content: Markup) -> Markup {
                         (nav)
                     }
                     main {
-                        (content)
+                        (main)
                     }
                 }
                 script
