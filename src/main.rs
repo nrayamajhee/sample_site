@@ -5,7 +5,7 @@ use axum::{
     routing::{get, Router},
 };
 use maud::{html, Markup, PreEscaped};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tower::ServiceBuilder;
 use tower_http::services::ServeDir;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
@@ -16,7 +16,7 @@ mod components;
 mod copy;
 use components::{custom_page, gallery, page};
 mod builder;
-use clerk_rs::{clerk::Clerk, endpoints::ClerkGetEndpoint, ClerkConfiguration};
+use clerk_rs::{clerk::Clerk, ClerkConfiguration};
 use dotenv::dotenv;
 use sqlx::postgres::{PgPool, PgPoolOptions};
 
@@ -27,9 +27,10 @@ impl IntoResponse for HtmlRes {
         (StatusCode::OK, AHtml(self.0.into_string())).into_response()
     }
 }
+use std::sync::Arc;
 
-async fn home_page(State(db): State<PgPool>) -> HtmlRes {
-    let nav = builder::nav(&db).await;
+async fn home_page(State(state): State<AppState>) -> HtmlRes {
+    let nav = builder::nav(&state.db).await;
     HtmlRes(page(
         nav,
         html! {
@@ -55,10 +56,10 @@ fn script(script: &str) -> Markup {
     }
 }
 
-async fn single_page(Path(path): Path<String>, State(db): State<PgPool>) -> HtmlRes {
+async fn single_page(Path(path): Path<String>, State(state): State<AppState>) -> HtmlRes {
     let page = page(
-        builder::nav(&db).await,
-        builder::page(&db, &path).await,
+        builder::nav(&state.db).await,
+        builder::page(&state.db, &path).await,
         &[],
     );
     HtmlRes(page)
@@ -86,17 +87,15 @@ fn span<T>(request: &Request<T>) -> Span {
     )
 }
 
-async fn sign_up() -> String {
-    let config = ClerkConfiguration::new(
-        None,
-        None,
-        Some(std::env::var("CLERK_SECRET").unwrap()),
-        None,
-    );
-    let auth = Clerk::new(config);
-    let res = auth.get(ClerkGetEndpoint::GetUserList).await.unwrap();
-    tracing::debug!("res: {:?}", res);
-    res.to_string()
+#[derive(Serialize, Deserialize)]
+struct JwkSession {
+    sid: String,
+}
+
+#[derive(Clone)]
+struct AppState {
+    db: PgPool,
+    auth: Arc<Clerk>,
 }
 
 async fn not_found() -> (StatusCode, AHtml<String>) {
@@ -124,11 +123,19 @@ async fn main() {
         .connect(&std::env::var("DATABASE_URL").expect("DB env var not set"))
         .await
         .expect("Can't connect to DB");
+    let config = ClerkConfiguration::new(
+        None,
+        None,
+        Some(std::env::var("CLERK_SECRET").unwrap()),
+        None,
+    );
+    let auth = Arc::new(Clerk::new(config));
+    let state = AppState { auth, db: pool };
     let router = Router::new()
         .route("/", get(home_page))
         .route("/page/:id", get(single_page))
         .route("/image", get(gallery_page))
-        .route("/signup", get(sign_up))
+        // .route("/logged_in", get(logged_in))
         .fallback(not_found)
         .nest_service("/assets", ServeDir::new("assets"))
         .layer(
@@ -143,7 +150,7 @@ async fn main() {
                     ),
             ),
         )
-        .with_state(pool);
+        .with_state(state);
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080")
         .await
         .expect("Can't bind to TCP");

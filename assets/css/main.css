@@ -114,12 +114,13 @@ p {
     translate(-50%, -50%);
   tansform-origin: center;
   box-sizing: border-box;
-  transition: all 0.3s ease;
 }
 #login-button.logged::before {
+  transition: all 0.3s ease;
   left: 60%;
 }
 #login-button.logged::after {
+  transition: all 0.3s ease;
   left: 50%;
 }
 #login-button::after {
@@ -132,7 +133,6 @@ p {
   width: 50%;
   height: 4px;
   background: var(--fg-in);
-  transition: all 0.3s ease;
 }
 #subhead {
   font-size: 4em;
