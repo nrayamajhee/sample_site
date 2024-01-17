@@ -26,6 +26,9 @@ def main [x?: string] {
       psql -d $image -a -f ./src/db/schema.sql
       psql -d $image -a -f ./src/db/mock.sql
     }
+    'env' | 'e' => {
+      cat .env | lines | each { |$e| fly secrets set $e }
+    }
     _ => { 
       echo './go.nu [(b)uild | (r)un]'
     }
