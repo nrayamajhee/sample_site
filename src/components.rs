@@ -7,67 +7,76 @@ pub struct Page {
     pub title: String,
 }
 
+pub struct PageConfig {
+    pub use_htmx: bool,
+    pub use_clerk: bool,
+    pub styles: Vec<String>,
+    pub page: Page,
+    pub nav: Markup,
+    pub body: Markup,
+}
 
-pub fn head(htmx: bool, auth: bool, styles: &[&str]) -> Markup {
+impl Default for PageConfig {
+    fn default() -> Self {
+        Self {
+            use_htmx: false,
+            use_clerk: false,
+            styles: vec![],
+            page: Page {
+                slug: "page-not-found".to_string(),
+                title: "Page not found".to_string(),
+            },
+            nav: html! {},
+            body: html! {},
+        }
+    }
+}
+
+pub fn head(config: &PageConfig) -> Markup {
     html! {
         head {
-            title { "Sample site" }
+            title { (TITLE) " | " (config.page.title) }
             link rel="stylesheet" href="/assets/css/main.css";
             link rel="stylesheet" href="/assets/css/input.css";
-            @for site in styles {
+            @for site in &config.styles {
                 link rel="stylesheet" href=(site);
             }
-            @if htmx {
+            @if config.use_htmx {
                 script
                 src="https://unpkg.com/htmx.org@1.9.6"
                 integrity="sha384-FhXw7b6AlE/jyjlZH5iHa/tTe9EpJ1Y55RjcgPbjeWMskSxZt1v9qkxLJWNJaGni"
                 crossorigin="anonymous" {}
             }
-            @if auth {
+            @if config.use_clerk {
                 script
                 data-clerk-frontend-api=(std::env::var("CLERK_URL").unwrap())
                 data-clerk-publishable-key=(std::env::var("CLERK_KEY").unwrap())
                 src=(format!("https://{api}/npm/@clerk/clerk-js@latest/dist/clerk.browser.js", api=std::env::var("CLERK_URL").unwrap()))
                 {}
-            } 
-        }
-    }
-}
-
-pub fn custom_page(title: &str, body: Markup) -> Markup {
-    html! {
-        (DOCTYPE)
-        html {
-            (head(false, false, &[]))
-            h1 #head { (title) }
-            .wrapper {
-                main {
-                    (body)
-                }
             }
         }
     }
 }
 
-pub fn page(nav: Markup, main: Markup, style: &[&str]) -> Markup {
+pub fn page(config: PageConfig) -> Markup {
     html! {
         (DOCTYPE)
         html {
-            (head(true, true, style))
-            body {
+            (head(&config))
+                body {
                 (login_button())
                 a.title href="/" {
                     h1 #head { (TITLE) }
                 }
                 .wrapper {
                     header {
-                        (nav)
+                        (config.nav)
                     }
                     main {
-                        (main)
+                        (config.body)
                     }
                 }
-            }
+                }
         }
     }
 }

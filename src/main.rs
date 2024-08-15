@@ -1,7 +1,7 @@
 use axum::{
     extract::{MatchedPath, Path, Query, State},
     http::{Request, StatusCode},
-    response::{Html as AHtml, IntoResponse, Response},
+    response::{Html as AHtml, IntoResponse, Redirect, Response},
     routing::{get, Router},
 };
 use maud::{html, Markup, PreEscaped};
@@ -14,11 +14,13 @@ use tracing::{info_span, Level, Span};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod components;
 mod copy;
-use components::{custom_page, gallery, page};
+use components::{gallery, page, PageConfig};
 mod builder;
 use clerk_rs::{clerk::Clerk, ClerkConfiguration};
 use dotenv::dotenv;
 use sqlx::postgres::{PgPool, PgPoolOptions};
+mod photos;
+use photos::upload_photo;
 
 struct HtmlRes(Markup);
 
@@ -29,20 +31,20 @@ impl IntoResponse for HtmlRes {
 }
 use std::sync::Arc;
 
-async fn home_page(State(state): State<AppState>) -> HtmlRes {
-    let nav = builder::nav(&state.db).await;
-    HtmlRes(page(
-        nav,
-        html! {
-            article {
-                h2 { "Section 1" }
-                p { "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesent a fermentum nisi, at ultricies orci. Maecenas maximus tincidunt velit, non lacinia sem porta ut. Integer ullamcorper neque quam, posuere efficitur purus rhoncus eu. Aliquam venenatis dui quis tempus egestas. Nulla malesuada ex velit. Phasellus ultrices aliquam accumsan. Praesent magna sem, dapibus sit amet luctus quis, ultricies in nisi. Aenean eu erat rhoncus, tincidunt mi eu, eleifend erat. Nam finibus congue iaculis. Morbi vel rutrum orci. Fusce mollis lectus non pretium interdum." }
-            }
-            (gallery(0))
-        },
-        &[],
-    ))
-}
+// async fn home_page(State(state): State<AppState>) -> HtmlRes {
+//     let nav = builder::nav(&state.db).await;
+//     HtmlRes(page(
+//         nav,
+//         html! {
+//             article {
+//                 h2 { "Section 1" }
+//                 p { "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesent a fermentum nisi, at ultricies orci. Maecenas maximus tincidunt velit, non lacinia sem porta ut. Integer ullamcorper neque quam, posuere efficitur purus rhoncus eu. Aliquam venenatis dui quis tempus egestas. Nulla malesuada ex velit. Phasellus ultrices aliquam accumsan. Praesent magna sem, dapibus sit amet luctus quis, ultricies in nisi. Aenean eu erat rhoncus, tincidunt mi eu, eleifend erat. Nam finibus congue iaculis. Morbi vel rutrum orci. Fusce mollis lectus non pretium interdum." }
+//             }
+//             (gallery(0))
+//         },
+//         &[],
+//     ))
+// }
 
 struct PageContent {
     content: String,
@@ -57,11 +59,13 @@ fn script(script: &str) -> Markup {
 }
 
 async fn single_page(Path(path): Path<String>, State(state): State<AppState>) -> HtmlRes {
-    let page = page(
-        builder::nav(&state.db).await,
-        builder::page(&state.db, &path).await,
-        &[],
-    );
+    let page = page(PageConfig {
+        nav: builder::nav(&state.db).await,
+        use_htmx: true,
+        use_clerk: true,
+        body: builder::page(&state.db, &path).await,
+        ..Default::default()
+    });
     HtmlRes(page)
 }
 
@@ -99,15 +103,15 @@ struct AppState {
 }
 
 async fn not_found() -> (StatusCode, AHtml<String>) {
-    let page = custom_page(
-        "404",
-        html! {
+    let page = page(PageConfig {
+        body: html! {
             .text-center {
                 p.huge { "Page not found" }
                 a href="/" { "Your way home" }
             }
         },
-    );
+        ..Default::default()
+    });
     (StatusCode::NOT_FOUND, AHtml(page.into_string()))
 }
 
@@ -132,9 +136,12 @@ async fn main() {
     let auth = Arc::new(Clerk::new(config));
     let state = AppState { auth, db: pool };
     let router = Router::new()
-        .route("/", get(home_page))
-        .route("/page/:id", get(single_page))
-        .route("/image", get(gallery_page))
+        .route("/", get(|| async { Redirect::permanent("/page/about") }))
+        .route("/page/:slug", get(single_page))
+        .route("/gallery", get(gallery_page))
+        .route("/upload-photo", get(upload_photo))
+        // .route("/image", get(get_image))
+        // .route("/image", post(post_image))
         // .route("/logged_in", get(logged_in))
         .fallback(not_found)
         .nest_service("/assets", ServeDir::new("assets"))
