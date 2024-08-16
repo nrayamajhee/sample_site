@@ -1,7 +1,8 @@
+use crate::models::Page;
 use maud::{html, Markup, PreEscaped};
 use sqlx::PgPool;
 
-use crate::{components::Page, PageContent};
+use crate::PageContent;
 
 fn markdown(md: &str) -> PreEscaped<String> {
     PreEscaped(markdown::to_html(&md))

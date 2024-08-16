@@ -12,6 +12,7 @@ use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tower_http::LatencyUnit;
 use tracing::{info_span, Level, Span};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+mod models;
 mod components;
 mod copy;
 use components::{gallery, page, PageConfig};

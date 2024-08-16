@@ -1,11 +1,6 @@
+use crate::models::Page;
 use crate::{copy::TITLE, script};
 use maud::{html, Markup, DOCTYPE};
-
-#[derive(Debug)]
-pub struct Page {
-    pub slug: String,
-    pub title: String,
-}
 
 pub struct PageConfig {
     pub use_htmx: bool,
