@@ -1,10 +1,7 @@
 use axum::extract::State;
 use maud::html;
 
-use crate::{
-    components::{page, PageConfig},
-    AppState, HtmlRes,
-};
+use crate::{components::PageConfig, page::page, AppState, HtmlRes};
 
 pub fn get_photo() {}
 

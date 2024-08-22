@@ -19,3 +19,6 @@ tower-http = { version = "0.5.2", features = ["trace", "fs"] }
 trace = "0.1.7"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+
+[package.metadata.scripts]
+env = "infisical export --path=\"/site\" --env=staging > .env"

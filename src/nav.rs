@@ -1,25 +1,7 @@
 use maud::{html, Markup, PreEscaped};
 use sqlx::PgPool;
 
-use crate::{components::Page, PageContent};
-
-fn markdown(md: &str) -> PreEscaped<String> {
-    PreEscaped(markdown::to_html(&md))
-}
-
-pub async fn page(db: &PgPool, slug: &str) -> Markup {
-    let PageContent { content } = sqlx::query_as!(
-        PageContent,
-        "select content from pages where slug = $1",
-        slug
-    )
-    .fetch_one(db)
-    .await
-    .unwrap();
-    html! {
-        div{(markdown(&content))}
-    }
-}
+use crate::components::Page;
 
 pub async fn nav(db: &PgPool) -> Markup {
     let pages = sqlx::query_as!(Page, "select slug, title from pages")

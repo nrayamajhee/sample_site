@@ -51,32 +51,9 @@ pub fn head(config: &PageConfig) -> Markup {
                 script
                 data-clerk-frontend-api=(std::env::var("CLERK_URL").unwrap())
                 data-clerk-publishable-key=(std::env::var("CLERK_KEY").unwrap())
-                src=(format!("https://{api}/npm/@clerk/clerk-js@latest/dist/clerk.browser.js", api=std::env::var("CLERK_URL").unwrap()))
+                src=(format!("{api}/npm/@clerk/clerk-js@latest/dist/clerk.browser.js", api=std::env::var("CLERK_URL").unwrap()))
                 {}
             }
-        }
-    }
-}
-
-pub fn page(config: PageConfig) -> Markup {
-    html! {
-        (DOCTYPE)
-        html {
-            (head(&config))
-                body {
-                (login_button())
-                a.title href="/" {
-                    h1 #head { (TITLE) }
-                }
-                .wrapper {
-                    header {
-                        (config.nav)
-                    }
-                    main {
-                        (config.body)
-                    }
-                }
-                }
         }
     }
 }

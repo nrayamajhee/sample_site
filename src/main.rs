@@ -2,7 +2,7 @@ use axum::{
     extract::{MatchedPath, Path, Query, State},
     http::{Request, StatusCode},
     response::{Html as AHtml, IntoResponse, Redirect, Response},
-    routing::{get, Router},
+    routing::{get, post, Router},
 };
 use maud::{html, Markup, PreEscaped};
 use serde::{Deserialize, Serialize};
@@ -14,9 +14,10 @@ use tracing::{info_span, Level, Span};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod components;
 mod copy;
-use components::{gallery, page, PageConfig};
-mod builder;
+mod nav;
+mod page;
 use clerk_rs::{clerk::Clerk, ClerkConfiguration};
+use components::{gallery, PageConfig};
 use dotenv::dotenv;
 use sqlx::postgres::{PgPool, PgPoolOptions};
 mod photos;
@@ -58,17 +59,6 @@ fn script(script: &str) -> Markup {
     }
 }
 
-async fn single_page(Path(path): Path<String>, State(state): State<AppState>) -> HtmlRes {
-    let page = page(PageConfig {
-        nav: builder::nav(&state.db).await,
-        use_htmx: true,
-        use_clerk: true,
-        body: builder::page(&state.db, &path).await,
-        ..Default::default()
-    });
-    HtmlRes(page)
-}
-
 #[derive(Deserialize)]
 struct ImageQuery {
     index: Option<usize>,
@@ -103,7 +93,7 @@ struct AppState {
 }
 
 async fn not_found() -> (StatusCode, AHtml<String>) {
-    let page = page(PageConfig {
+    let page = page::page(PageConfig {
         body: html! {
             .text-center {
                 p.huge { "Page not found" }
@@ -115,6 +105,13 @@ async fn not_found() -> (StatusCode, AHtml<String>) {
     (StatusCode::NOT_FOUND, AHtml(page.into_string()))
 }
 
+macro_rules! env_var {
+    ($l: expr) => {{
+        let val = std::env::var(String::from($l)).expect(&$l);
+        val
+    }};
+}
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
@@ -122,22 +119,22 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    let db_env = env_var!("DATABASE_URL");
     let pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect(&std::env::var("DATABASE_URL").expect("DB env var not set"))
+        .connect(&db_env)
         .await
         .expect("Can't connect to DB");
-    let config = ClerkConfiguration::new(
-        None,
-        None,
-        Some(std::env::var("CLERK_SECRET").unwrap()),
-        None,
-    );
+    let config = ClerkConfiguration::new(None, None, Some(env_var!("CLERK_SECRET")), None);
     let auth = Arc::new(Clerk::new(config));
     let state = AppState { auth, db: pool };
     let router = Router::new()
-        .route("/", get(|| async { Redirect::permanent("/page/about") }))
-        .route("/page/:slug", get(single_page))
+        .route("/", get(|| async { 
+            Redirect::permanent("/about") 
+        }))
+        .route("/:slug", get(page::single))
+        // .route("/:slug/edit", get(page::edit))
+        // .route("/:slug/edit", post(page::update))
         .route("/gallery", get(gallery_page))
         .route("/upload-photo", get(upload_photo))
         // .route("/image", get(get_image))
