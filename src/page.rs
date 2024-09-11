@@ -3,8 +3,11 @@ use crate::copy::TITLE;
 use crate::nav::nav;
 use crate::script;
 use crate::{components::PageConfig, AppState, HtmlRes, PageContent};
-use axum::extract::{Path, State, Form};
-use axum::response::Redirect;
+use axum::extract::{Form, Path, Request, State};
+use axum::response::{IntoResponse, Redirect};
+use clerk_rs::validators::authorizer::ClerkAuthorizer;
+use clerk_rs::validators::axum::AxumClerkRequest;
+use http::{HeaderMap, StatusCode};
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 use serde::Deserialize;
 use sqlx::postgres::PgPool;
@@ -82,7 +85,20 @@ pub struct PageUpdateForm {
     content: String,
 }
 
-pub async fn edit(Path(path): Path<String>, State(state): State<AppState>) -> HtmlRes {
+async fn isAuthorized(auth: ClerkAuthorizer, headers: HeaderMap) -> bool {
+    let req = AxumClerkRequest { headers };
+    auth.authorize(&req).await.is_ok()
+}
+
+pub async fn edit(
+    headers: HeaderMap,
+    Path(path): Path<String>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    dbg!(&headers);
+    if !isAuthorized(state.auth, headers).await {
+        return Redirect::to("/error").into_response();
+    }
     let page = page(PageConfig {
         nav: nav(&state.db).await,
         use_htmx: true,
@@ -90,14 +106,18 @@ pub async fn edit(Path(path): Path<String>, State(state): State<AppState>) -> Ht
         body: edit_page(&state.db, &path).await,
         ..Default::default()
     });
-    HtmlRes(page)
+    HtmlRes(page).into_response()
 }
 
 pub async fn update(
+    headers: HeaderMap,
     State(state): State<AppState>,
     Path(path): Path<String>,
     Form(form): Form<PageUpdateForm>,
 ) -> Redirect {
+    if isAuthorized(state.auth, headers).await {
+        return Redirect::to("/error");
+    }
     sqlx::query!(
         "update pages set content = $1 where slug = $2",
         form.content,

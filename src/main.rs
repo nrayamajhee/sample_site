@@ -16,7 +16,7 @@ mod components;
 mod copy;
 mod nav;
 mod page;
-use clerk_rs::{clerk::Clerk, ClerkConfiguration};
+use clerk_rs::{clerk::Clerk, validators::authorizer::ClerkAuthorizer, ClerkConfiguration};
 use components::{gallery, PageConfig};
 use dotenv::dotenv;
 use sqlx::postgres::{PgPool, PgPoolOptions};
@@ -89,7 +89,7 @@ struct JwkSession {
 #[derive(Clone)]
 struct AppState {
     db: PgPool,
-    auth: Arc<Clerk>,
+    auth: ClerkAuthorizer,
 }
 
 async fn not_found() -> (StatusCode, AHtml<String>) {
@@ -105,6 +105,19 @@ async fn not_found() -> (StatusCode, AHtml<String>) {
     (StatusCode::NOT_FOUND, AHtml(page.into_string()))
 }
 
+async fn error() -> (StatusCode, AHtml<String>) {
+    let page = page::page(PageConfig {
+        body: html! {
+            .text-center {
+                p.huge { "Something went wrong!" }
+                a href="/" { "Your way home" }
+            }
+        },
+        ..Default::default()
+    });
+    (StatusCode::INTERNAL_SERVER_ERROR, AHtml(page.into_string()))
+}
+
 macro_rules! env_var {
     ($l: expr) => {{
         let val = std::env::var(String::from($l)).expect(&$l);
@@ -115,9 +128,7 @@ macro_rules! env_var {
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    tracing_subscriber::fmt::init();
 
     let db_env = env_var!("DATABASE_URL");
     let pool = PgPoolOptions::new()
@@ -126,21 +137,20 @@ async fn main() {
         .await
         .expect("Can't connect to DB");
     let config = ClerkConfiguration::new(None, None, Some(env_var!("CLERK_SECRET")), None);
-    let auth = Arc::new(Clerk::new(config));
+    let auth = ClerkAuthorizer::new(Clerk::new(config), true);
     let state = AppState { auth, db: pool };
     let router = Router::new()
-        .route("/", get(|| async { 
-            Redirect::permanent("/about") 
-        }))
+        .route("/", get(|| async { Redirect::permanent("/about") }))
         .route("/:slug", get(page::single))
-        // .route("/:slug/edit", get(page::edit))
-        // .route("/:slug/edit", post(page::update))
+        .route("/:slug/edit", get(page::edit))
+        .route("/:slug/edit", post(page::update))
         .route("/gallery", get(gallery_page))
         .route("/upload-photo", get(upload_photo))
         // .route("/image", get(get_image))
         // .route("/image", post(post_image))
         // .route("/logged_in", get(logged_in))
         .fallback(not_found)
+        .route("/error", get(error))
         .nest_service("/assets", ServeDir::new("assets"))
         .layer(
             ServiceBuilder::new().layer(

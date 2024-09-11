@@ -15,7 +15,7 @@ pub async fn nav(db: &PgPool) -> Markup {
             {
                 @for Page{slug, title} in pages {
                     li {
-                        a href=(format!("/page/{}", slug)) { (title) }
+                        a href=(format!("/{}", slug)) { (title) }
                     }
                 }
             }

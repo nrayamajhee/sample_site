@@ -6,15 +6,15 @@ edition = "2021"
 [dependencies]
 axum = "0.7.5"
 axum-extra = { version = "0.9.3", features = ["cookie"] }
-clerk-rs = "0.2.3"
+clerk-rs = { version = "0.3.1", features = ["axum"] }
 dotenv = "0.15.0"
 http = "1.1.0"
 markdown = "0.3.0"
-maud = { version = "0.25.0", features = ["axum"] }
-serde = { version = "1.0.207", features = ["derive"] }
-sqlx = { version = "0.7.4", features = ["runtime-tokio", "tls-rustls", "sqlx-postgres", "postgres"] }
-tokio = { version = "1.39.2", features = ["macros", "rt-multi-thread"] }
-tower = "0.4.13"
+maud = { version = "0.26.0", features = ["axum"] }
+serde = { version = "1.0.210", features = ["derive"] }
+sqlx = { version = "0.8.2", features = ["runtime-tokio", "tls-rustls", "sqlx-postgres", "postgres"] }
+tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread"] }
+tower = "0.5.1"
 tower-http = { version = "0.5.2", features = ["trace", "fs"] }
 trace = "0.1.7"
 tracing = "0.1.40"
